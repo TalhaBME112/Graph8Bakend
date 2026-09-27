@@ -1,0 +1,227 @@
+<div class="market">
+ <header class="top">
+  <div class="who"><span class="avatar">{{(summary()?.profile?.company||user.name).charAt(0)}}</span><div><b>{{summary()?.profile?.company||user.name}}</b><small>{{user.email}}</small></div></div>
+  <nav class="tabs" aria-label="Marketplace">
+   <button [class.on]="tab==='overview'" (click)="go('overview')">Overview</button>
+   <button [class.on]="tab==='discover'" (click)="go('discover')">Opportunities</button>
+   <button [class.on]="tab==='bids'" (click)="go('bids')">My bids</button>
+   <button [class.on]="tab==='tenders'" (click)="go('tenders')">My tenders</button>
+   <button [class.on]="tab==='messages'" (click)="openMessages()">Messages @if(unreadMessages()){<i class="count">{{unreadMessages()}}</i>}</button>
+   <button [class.on]="tab==='contacts'" (click)="go('contacts')">Contacts</button>
+   <button [class.on]="tab==='agent'" (click)="openAgent()">BidFlow agent</button>
+  </nav>
+  <div class="tools">
+   <div class="bell-wrap"><button class="icon" (click)="showBell=!showBell" [attr.aria-label]="notifications().unread+' unread notifications'">🔔@if(notifications().unread){<i class="count">{{notifications().unread}}</i>}</button>
+    @if(showBell){<div class="bell" role="dialog" aria-label="Notifications"><div class="bell-head"><b>Notifications</b>@if(notifications().unread){<button class="link" (click)="readAll()">Mark all read</button>}</div>
+     @for(n of notifications().items.slice(0,15);track n.id){<button class="note" [class.unread]="!n.read" (click)="openNotification(n)"><b>{{n.title}}</b>@if(n.body){<span>{{n.body}}</span>}<small>{{ago(n.at)}}</small></button>}@empty{<p class="muted pad">You're all caught up.</p>}</div>}</div>
+   <button class="icon" (click)="openAccount()" title="Account and supplier profile">⚙</button>
+   @if(user.role==='administrator'){<button class="ghost" (click)="internal.emit()">Internal workspace</button>}
+   <button class="ghost" (click)="signout.emit()">Sign out</button>
+  </div>
+ </header>
+
+ @if(error()){<div class="alert error" role="alert"><span>{{error()}}</span><button class="link" (click)="error.set('')">Dismiss</button></div>}
+ @if(notice()){<div class="alert" role="status"><span>{{notice()}}</span><button class="link" (click)="notice.set('')">Dismiss</button></div>}
+
+ @if(tab==='agent'){<app-bidflow [user]="user" [tenders]="tenders()" [profile]="summary()?.profile" [focus]="focusId" (changed)="load(false)" (openTender)="openFromInvite($event)" />}
+
+ <!-- ─── Bid detail ─────────────────────────────────────────────────────────── -->
+ @else if(bid();as b){@let t=tender(b.tenderId);
+  <div class="crumbs"><button class="link" (click)="back()">← {{tab==='tenders'?'My tenders':'My bids'}}</button></div>
+  <section class="head"><div><p class="kicker">{{b.bidderId===user.id?'Your bid':'Bid from '+b.company}}</p><h1>{{t?.title}}</h1><p class="muted">{{t?.issuer}} · closes {{date(t?.deadline)}}@if(t&&!closed(t)){ · {{remaining(t)}}}</p></div>
+   <div class="head-side"><span class="status" [attr.data-t]="statusTone(b.status)">{{b.status}}</span><strong class="amount">{{money(b.amount,b.currency)}}</strong></div></section>
+  @if(tracking();as tr){<ol class="stepper" [attr.aria-label]="'Bid progress: '+tr.stage">@for(s of stages;track s.key){<li [class.done]="stageIndex(tr.stage)>=stageIndex(s.key)" [class.now]="tr.stage===s.key"><span></span><b>{{s.key==='decision'&&tr.outcome?(tr.outcome==='awarded'?'Awarded':tr.outcome==='rejected'?'Not awarded':'Cancelled'):s.label}}</b><small>{{s.key==='submitted'?day(tr.submittedAt):s.key==='opened'?day(tr.openedAt):s.key==='under_review'?day(tr.reviewedAt):s.key==='decision'?day(tr.decidedAt):''}}</small></li>}</ol>}
+  <nav class="subtabs"><button [class.on]="bidTab==='proposal'" (click)="bidTab='proposal'">Proposal</button><button [class.on]="bidTab==='tracking'" (click)="bidTab='tracking'">Tracking</button><button [class.on]="bidTab==='files'" (click)="bidTab='files'">Attachments ({{b.documents.length}})</button>@if(b.status!=='draft'){<button (click)="startConversation({bidId:b.id})">Message {{b.bidderId===user.id?'buyer':'bidder'}}</button>}</nav>
+
+  @if(bidTab==='proposal'){<section class="panel">
+   @if(b.bidderId===user.id&&b.status==='draft'){
+    @if(t&&b.tenderRevision!==t.revision){<div class="alert warn">The tender changed after this draft was saved. Review the addenda, then save before submitting.</div>}
+    <label>Proposal<textarea rows="16" [(ngModel)]="edit.proposal"></textarea></label>
+    <div class="grid3"><label>Offer ({{b.currency}})<input type="number" min="0" [(ngModel)]="edit.amount"></label><label>Delivery (days)<input type="number" min="1" [(ngModel)]="edit.deliveryDays"></label><label>Evidence and references<input [(ngModel)]="edit.evidence" placeholder="Certifications, past projects, references"></label></div>
+    @if(submissionIssues().length){<ul class="checklist">@for(i of submissionIssues();track i){<li>{{i}}</li>}</ul>}
+    <div class="actions"><button (click)="saveBid()" [disabled]="busy()">Save draft</button><button class="primary" (click)="submitBid()" [disabled]="busy()||submissionIssues().length>0">Submit bid</button>
+     @if(summary()?.capabilities?.ai?.permitted&&summary()?.capabilities?.ai?.configured){<button class="ghost" (click)="aiDraft()" [disabled]="busy()">Suggest wording (Graph8 AI)</button>}<button class="ghost" (click)="openAgent(b.tenderId)">Run BidFlow agent</button></div>
+    @if(b.ai?.status==='completed'){<details class="panel-inner"><summary>Graph8 AI suggestion</summary><pre>{{b.ai.proposal}}</pre><button (click)="edit.proposal=b.ai.proposal">Use this text</button></details>}
+   }@else{
+    <pre class="doc">{{b.proposal}}</pre>
+    <dl class="facts"><div><dt>Offer</dt><dd>{{money(b.amount,b.currency)}}</dd></div><div><dt>Delivery</dt><dd>{{b.deliveryDays}} days</dd></div><div><dt>Evidence</dt><dd>{{b.evidence}}</dd></div>@if(b.receipt){<div><dt>Receipt</dt><dd class="mono">{{b.receipt}}</dd></div>}</dl>
+    <div class="actions"><button (click)="download('bids/'+b.id+'/export','proposal.md')">Download proposal</button>@if(b.bidderId===user.id&&['submitted','shortlisted'].includes(b.status)&&t&&!closed(t)){<button (click)="bidAction('revise',{},'Bid withdrawn to draft. Resubmit before the closing time.')" [disabled]="busy()">Withdraw and revise</button>}</div>
+   }
+   @if(b.bidderId!==user.id&&t&&own(t)&&['submitted','shortlisted'].includes(b.status)){
+    <div class="split2"><div class="panel-inner"><h3>Evaluation</h3><div class="grid2"><label>Technical (0–100)<input type="number" min="0" max="100" [(ngModel)]="technical"></label><label>Commercial (0–100)<input type="number" min="0" max="100" [(ngModel)]="commercial"></label></div><label>Rationale<textarea rows="3" [(ngModel)]="evaluation"></textarea></label><button (click)="bidAction('shortlist',{technical,commercial,note:evaluation},'Evaluation saved. The bidder sees that the bid is under review; scores are shared after the decision.')" [disabled]="busy()||!evaluation.trim()">Save evaluation and shortlist</button>@if(b.evaluation){<p class="muted">Recorded: technical {{b.evaluation.technical}}, commercial {{b.evaluation.commercial}}.</p>}</div>
+     <div class="panel-inner award"><h3>Award</h3>@if(!closed(t)){<p class="muted">Bidding is open until {{date(t.deadline)}}. Close bidding to award now.</p><button (click)="closeBidding(t)" [disabled]="busy()">Close bidding now</button>}@else{<p class="muted">Awarding marks this bid as won, notifies all bidders and records a Closed Won deal in Graph8.</p><label>Award rationale<textarea rows="3" [(ngModel)]="awardReason"></textarea></label><button class="primary" (click)="awardFromBid(b)" [disabled]="busy()||!awardReason.trim()">Award to {{b.company}}</button>}</div></div>}
+   @if(b.bidderId===user.id&&b.evaluation){<div class="panel-inner"><h3>Buyer's evaluation</h3><p>Technical {{b.evaluation.technical}}/100 · Commercial {{b.evaluation.commercial}}/100</p><p class="muted">{{b.evaluation.note}}</p></div>}
+   @if(b.outcomeReason){<div class="panel-inner"><h3>Outcome</h3><p>{{b.outcomeReason}}</p></div>}
+  </section>}
+
+  @if(bidTab==='tracking'){<section class="panel">@if(tracking();as tr){
+   <dl class="facts"><div><dt>Submitted</dt><dd>{{tr.submittedAt?date(tr.submittedAt):'Not yet'}}</dd></div><div><dt>First opened by buyer</dt><dd>{{tr.openedAt?date(tr.openedAt):'Not yet'}}</dd></div><div><dt>Buyer views</dt><dd>{{tr.views}}</dd></div><div><dt>Evaluation</dt><dd>{{tr.reviewedAt?'Completed '+day(tr.reviewedAt):'Pending'}}</dd></div></dl>
+   <ol class="timeline">@for(e of tr.events.slice().reverse();track e.id){<li [attr.data-t]="e.type"><b>{{eventLabel(e.type)}}</b>@if(e.detail){<span>{{e.detail}}</span>}<small>{{date(e.at)}}</small></li>}@empty{<li><b>No activity yet</b></li>}</ol>
+   <p class="muted small">The buyer's system records when your bid is opened, viewed and evaluated. Scores are shared once a decision is made.</p>}</section>}
+
+  @if(bidTab==='files'){<section class="panel"><ul class="files">@for(d of b.documents;track d.id){<li><span class="ficon">PDF</span><div><b>{{d.name}}</b><small>{{size(d.size)}}</small></div><button (click)="download('bids/'+b.id+'/document/'+d.id,d.name)">Download</button></li>}@empty{<li class="muted">No attachments.</li>}</ul>
+   @if(b.bidderId===user.id&&b.status==='draft'){<label class="upload">Add attachment (PDF, DOCX, TXT, MD, CSV · max 6 MB)<input type="file" accept=".pdf,.docx,.txt,.md,.csv" (change)="uploadBidDoc($event)"></label>}</section>}
+ }
+
+ <!-- ─── Tender detail ──────────────────────────────────────────────────────── -->
+ @else if(selected();as t){
+  <div class="crumbs"><button class="link" (click)="back()">← {{own(t)?'My tenders':'Opportunities'}}</button></div>
+  <section class="head"><div><p class="kicker">{{t.category}} · {{t.country}}@if(t.external){ · {{t.source?.name}}}</p><h1>{{t.title}}</h1><p class="muted">{{t.issuer}} · closes {{date(t.deadline)}}@if(!closed(t)){ · <b>{{remaining(t)}}</b>}</p></div>
+   <div class="head-side"><span class="status" [attr.data-t]="statusTone(t.status)">{{t.status==='published'&&closed(t)?'closed':t.status}}</span><strong class="amount">{{t.budget?money(t.budget,t.currency):'Value not stated'}}</strong>
+    <div class="actions right">
+     @if(own(t)){@if(t.status==='draft'||!closed(t)){<button (click)="editTender(t)">Edit</button>}@if(t.status==='draft'){<button class="primary" (click)="publish()" [disabled]="busy()">Publish</button>}@if(t.status==='published'&&!closed(t)){<button (click)="cancelTender()" [disabled]="busy()">Cancel tender</button>}}
+     @else{@if(bidFor(t);as mb){<button class="primary" (click)="openBid(mb,mb.status==='draft'?'proposal':'tracking')">{{mb.status==='draft'?'Continue bid':'View bid status'}}</button>}@else if(!closed(t)&&!t.external){<button class="primary" (click)="prepare(t)" [disabled]="busy()">Prepare bid</button>}
+      @if(t.external){<a class="btn primary" [href]="t.sourceUrl" target="_blank" rel="noopener">Open official notice</a>}@else{<button (click)="startConversation({tenderId:t.id})">Contact buyer</button>}}
+    </div></div></section>
+  <nav class="subtabs"><button [class.on]="tenderTab==='overview'" (click)="tenderTab='overview'">Overview</button><button [class.on]="tenderTab==='documents'" (click)="tenderTab='documents'">Documents ({{t.documents?.length||0}})</button><button [class.on]="tenderTab==='clarifications'" (click)="tenderTab='clarifications'">Clarifications ({{clarifications().length}})</button>@if(own(t)&&t.status!=='draft'){<button [class.on]="tenderTab==='bids'" (click)="tenderTab='bids'">Bids ({{received().length}})</button><button [class.on]="tenderTab==='activity'" (click)="tenderTab='activity'">Activity</button>}@if(own(t)){<button (click)="openAgent(t.id)">Suggested suppliers</button>}</nav>
+
+  @if(tenderTab==='overview'){<div class="split"><section class="panel"><h3>Scope and requirements</h3><p class="prose">{{t.description}}</p>
+    @if(t.amendments?.length){<h3>Addenda</h3><ol class="timeline">@for(a of t.amendments.slice().reverse();track a.id){<li><b>{{a.note}}</b><small>{{date(a.at)}}</small></li>}</ol>}
+    @if(t.award){<div class="panel-inner"><h3>Award</h3><p>Awarded to <b>{{t.award.company}}</b> on {{day(t.award.at)}}.</p><p class="muted">{{t.award.reason}}</p>@if(t.award.graph8;as g){<p class="small">@if(g.status==='completed'){Recorded in Graph8 as a Closed Won deal ({{g.pipeline}}).}@else if(g.status==='running'){Recording the deal in Graph8…}@else{Graph8 deal not recorded: {{g.errors?.join('; ')}}}</p>}</div>}
+    @if(t.cancellationReason){<div class="panel-inner"><h3>Cancelled</h3><p>{{t.cancellationReason}}</p></div>}</section>
+   <aside class="panel"><dl class="facts col"><div><dt>Buyer</dt><dd>{{t.issuer}}</dd></div><div><dt>Reference</dt><dd class="mono">{{t.source?.externalId||t.id.slice(0,8).toUpperCase()}}</dd></div><div><dt>Published</dt><dd>{{day(t.publishedAt)||'Not yet'}}</dd></div><div><dt>Closing</dt><dd>{{date(t.deadline)}}</dd></div>@if(t.clarificationDeadline){<div><dt>Questions close</dt><dd>{{date(t.clarificationDeadline)}}</dd></div>}<div><dt>Location</dt><dd>{{t.country}}{{t.region?', '+t.region:''}}</dd></div>@if(t.source?.contact;as sc){<div><dt>Buyer contact</dt><dd>{{sc.name}}@if(sc.email){<br><a [href]="'mailto:'+sc.email">{{sc.email}}</a>}</dd></div>}@if(t.sourceUrl){<div><dt>Official notice</dt><dd><a [href]="t.sourceUrl" target="_blank" rel="noopener">Open ↗</a></dd></div>}</dl>
+    @if(!own(t)&&t.match){<div class="panel-inner"><h3>Match with your profile · {{t.match.score}}/100</h3><ul class="plain">@for(r of t.match.reasons;track r){<li>{{r}}</li>}</ul><button class="link" (click)="dialog='scoring'">How is this scored?</button></div>}</aside></div>}
+
+  @if(tenderTab==='documents'){<section class="panel"><div class="row-head"><h3>Tender documents</h3>@if(register()?.views!==undefined){<span class="muted small">{{register().views}} supplier views · {{register().interested?.length||0}} organisations engaged</span>}</div>
+   <table class="table"><thead><tr><th>Document</th><th>Type</th><th>Size</th><th>Added</th>@if(own(t)){<th>Downloads</th>}<th></th></tr></thead><tbody>
+    @for(d of register()?.documents||t.documents||[];track d.id){<tr><td><b>{{d.name}}</b>@if(d.description){<small>{{d.description}}</small>}</td><td><span class="tag">{{d.category||'Specification'}}</span></td><td>{{size(d.size)}}</td><td>{{day(d.at)}}</td>@if(own(t)){<td>{{d.downloads||0}}@if(d.downloadedBy?.length){<small>{{d.downloadedBy.join(', ')}}</small>}</td>}<td class="right"><button (click)="download('tenders/'+t.id+'/document/'+d.id,d.name)">Download</button>@if(own(t)&&t.status==='draft'){<button class="link" (click)="removeDocument(d)">Remove</button>}</td></tr>}
+    @empty{<tr><td [attr.colspan]="own(t)?6:5" class="muted">No documents have been published for this tender.</td></tr>}</tbody></table>
+   @if(own(t)&&(t.status==='draft'||!closed(t))){<div class="panel-inner"><h3>{{t.status==='draft'?'Attach a document':'Publish an addendum document'}}</h3>@if(t.status!=='draft'){<p class="muted small">Documents added after publication are recorded as addenda and all bidders are notified.</p>}
+    <div class="grid3">@if(t.status==='draft'){<label>Type<select [(ngModel)]="docForm.category">@for(c of docCategories;track c){<option>{{c}}</option>}</select></label>}<label class="span2">Description (optional)<input [(ngModel)]="docForm.description" placeholder="e.g. Technical specification, revision B"></label></div>
+    <label class="upload">Choose file (PDF, DOCX, TXT, MD, CSV · max 6 MB)<input type="file" accept=".pdf,.docx,.txt,.md,.csv" (change)="uploadTenderDoc($event)"></label></div>}</section>}
+
+  @if(tenderTab==='clarifications'){<section class="panel"><div class="row-head"><h3>Official clarifications</h3>@if(t.clarificationDeadline){<span class="muted small">Questions close {{date(t.clarificationDeadline)}}</span>}</div>
+   <p class="muted small">Answers are published to every bidder. The name of the organisation asking is not shown to other bidders.</p>
+   @for(c of clarifications();track c.id){<article class="clar" [class.pending]="c.status==='pending'"><header><span class="ref">{{c.ref}}</span><span class="tag">{{c.kind==='notice'?'Buyer notice':c.status==='pending'?'Awaiting answer':'Answered'}}</span>@if(c.mine){<span class="tag">Your question</span>}@if(c.askedByCompany){<span class="muted small">from {{c.askedByCompany}}</span>}<small class="muted">{{date(c.at)}}</small></header>
+    <p class="q">{{c.question}}</p>@if(c.answer){<p class="a">{{c.answer}}</p><small class="muted">Published {{date(c.answeredAt)}}</small>}
+    @if(own(t)&&c.status==='pending'&&!c.legacy){<label>Official answer<textarea rows="3" [(ngModel)]="answers[c.id]"></textarea></label><button class="primary" (click)="answer(c)" [disabled]="busy()||!answers[c.id]?.trim()">Publish answer</button>}</article>}
+   @empty{<p class="muted">No clarifications have been issued.</p>}
+   @if(!own(t)&&!closed(t)&&!t.external){<div class="panel-inner"><h3>Request a clarification</h3><textarea rows="3" [(ngModel)]="question" placeholder="Ask about scope, requirements or evaluation"></textarea><button (click)="ask()" [disabled]="busy()||question.trim().length<5">Send question</button></div>}
+   @if(own(t)&&t.status==='published'){<div class="panel-inner"><h3>Issue an official clarification</h3><input [(ngModel)]="noticeForm.title" placeholder="Subject, e.g. Site visit"><textarea rows="3" [(ngModel)]="noticeForm.body" placeholder="Clarification text shared with all bidders"></textarea><button (click)="issueNotice()" [disabled]="busy()||!noticeForm.title.trim()||!noticeForm.body.trim()">Issue clarification</button></div>}</section>}
+
+  @if(tenderTab==='bids'&&own(t)){<section class="panel">
+   <div class="row-head"><h3>Bids received</h3>@if(t.status==='published'&&!closed(t)&&received().length){<button (click)="closeBidding(t)" [disabled]="busy()">Close bidding now</button>}</div>
+   @if(t.status==='published'&&!closed(t)){<p class="muted small">Bidding closes {{date(t.deadline)}} ({{remaining(t)}}). You can open and evaluate bids now; awarding is available once bidding closes.</p>}
+   <table class="table"><thead><tr><th>Supplier</th><th>Offer</th><th>Delivery</th><th>Status</th><th>Evaluation</th><th>Opened</th><th></th></tr></thead><tbody>
+    @for(b of received();track b.id){<tr [class.win]="recommendation()?.recommendedBidId===b.id"><td><b>{{b.company}}</b></td><td>{{money(b.amount,b.currency)}}</td><td>{{b.deliveryDays}} d</td><td><span class="status" [attr.data-t]="statusTone(b.status)">{{b.status}}</span></td><td>{{b.evaluation?'T '+b.evaluation.technical+' · C '+b.evaluation.commercial:'—'}}</td><td>{{b.tracking?.openedAt?day(b.tracking.openedAt):'Not opened'}}</td>
+     <td class="right"><button (click)="openBid(b)">Open</button>@if(closed(t)&&t.status==='published'&&['submitted','shortlisted'].includes(b.status)){<button class="primary" (click)="awardCandidate.set(b)">Award…</button>}</td></tr>}
+    @empty{<tr><td colspan="7" class="muted">No bids submitted yet.</td></tr>}</tbody></table>
+   @if(recommendation();as r){@if(r.rows.length){<div class="panel-inner"><h3>Comparison</h3><p>{{r.summary}}</p><p class="muted small">{{r.method}}</p></div>}}
+   @if(awardCandidate();as w){<div class="panel-inner award"><h3>Award to {{w.company}}</h3><p class="muted">{{money(w.amount,w.currency)}} · {{w.deliveryDays}} days. Other bids will be marked not awarded and all bidders notified.</p><label>Award rationale<textarea rows="3" [(ngModel)]="awardReason"></textarea></label><div class="actions"><button class="primary" (click)="confirmAward()" [disabled]="busy()||!awardReason.trim()">Confirm award</button><button (click)="awardCandidate.set(null)">Cancel</button></div></div>}
+  </section>}
+
+  @if(tenderTab==='activity'&&own(t)){<section class="panel"><h3>Supplier engagement</h3>@if(register();as r){<dl class="facts"><div><dt>Supplier views</dt><dd>{{r.views}}</dd></div><div><dt>Organisations engaged</dt><dd>{{r.interested?.length||0}}</dd></div><div><dt>Bids</dt><dd>{{received().length}}</dd></div><div><dt>Clarifications</dt><dd>{{clarifications().length}}</dd></div></dl>@if(r.interested?.length){<p class="muted small">Engaged: {{r.interested.join(', ')}}</p>}}
+   @if(t.bidflow){<p class="small">BidFlow invited {{t.bidflow.invited}} suppliers via Graph8 on {{day(t.bidflow.at)}}.</p>}</section>}
+ }
+
+ <!-- ─── Overview ───────────────────────────────────────────────────────────── -->
+ @else if(tab==='overview'){@if(summary();as s){
+  <div class="kpis"><button (click)="go('discover')"><span>Open opportunities</span><b>{{s.stats.published}}</b></button><button (click)="go('bids')"><span>My active bids</span><b>{{s.stats.myBids}}</b></button><button (click)="go('tenders')"><span>My tenders</span><b>{{s.stats.owned}}</b></button><button (click)="go('tenders')"><span>Bids received</span><b>{{s.stats.received}}</b></button><button (click)="openMessages()"><span>Unread messages</span><b>{{unreadMessages()}}</b></button></div>
+  <div class="split"><section class="panel"><div class="row-head"><h3>Needs attention</h3>@if(notifications().unread){<button class="link" (click)="readAll()">Mark all read</button>}</div>
+    <ul class="feed">@for(a of attention();track $index){<li><button class="feed-item" (click)="a.n?openNotification(a.n):openBid(a.bid)"><b>{{a.text}}</b><span>{{a.sub}}</span>@if(a.at){<small>{{ago(a.at)}}</small>}</button></li>}@empty{<li class="muted">Nothing needs your attention.</li>}</ul></section>
+   <section class="panel"><h3>Recent bids</h3><ul class="feed">@for(b of bids().slice(0,5);track b.id){<li><button class="feed-item" (click)="tab='bids';openBid(b,'tracking')"><b>{{tender(b.tenderId)?.title}}</b><span>{{money(b.amount,b.currency)}} · <span class="status" [attr.data-t]="statusTone(b.status)">{{b.status}}</span>@if(b.tracking?.openedAt){ · opened by buyer}</span></button></li>}@empty{<li class="muted">No bids yet. <button class="link" (click)="go('discover')">Browse opportunities</button></li>}</ul></section></div>
+ }}
+
+ <!-- ─── Opportunities ──────────────────────────────────────────────────────── -->
+ @else if(tab==='discover'){
+  <div class="toolbar"><input class="grow" placeholder="Search title, buyer or scope" [(ngModel)]="search" aria-label="Search"><select [(ngModel)]="category" aria-label="Category"><option value="">All categories</option>@for(c of summary()?.categories||[];track c){<option>{{c}}</option>}</select><input placeholder="Country" [(ngModel)]="country" aria-label="Country"><label class="check"><input type="checkbox" [(ngModel)]="matched">Matches my profile</label><span class="seg"><button [class.on]="!history" (click)="history=false">Open</button><button [class.on]="history" (click)="history=true">Closed</button></span><button class="ghost" (click)="dialog='scoring'">How matching works</button></div>
+  <table class="table rows"><thead><tr><th>Tender</th><th>Buyer</th><th>Location</th><th>Value</th><th>Closes</th><th>Match</th></tr></thead><tbody>
+   @for(t of opportunities();track t.id){<tr (click)="openTender(t)" tabindex="0" (keydown.enter)="openTender(t)"><td><b>{{t.title}}</b><small>{{t.category}}@if(t.external){ · <span class="tag">{{t.source?.name}}</span>}@if(t.invited){ · <span class="tag accent">Invited</span>}@if(bidFor(t);as mb){ · <span class="tag">Your bid: {{mb.status}}</span>}</small></td><td>{{t.issuer}}</td><td>{{t.country}}</td><td>{{t.budget?money(t.budget,t.currency):'—'}}</td><td>{{closed(t)?day(t.deadline):remaining(t)}}</td><td><span class="score" [attr.data-v]="t.match?.score>=70?'hi':t.match?.score>=50?'mid':'lo'">{{t.match?.score??'—'}}</span></td></tr>}
+   @empty{<tr><td colspan="6" class="muted">No tenders match these filters.</td></tr>}</tbody></table>
+  <p class="muted small">{{summary()?.notice}}</p>
+ }
+
+ <!-- ─── My bids ────────────────────────────────────────────────────────────── -->
+ @else if(tab==='bids'){
+  <div class="toolbar"><h2 class="grow">My bids</h2><button (click)="matchNow()" [disabled]="busy()">Prepare drafts for matching tenders</button></div>
+  <table class="table rows"><thead><tr><th>Tender</th><th>Offer</th><th>Status</th><th>Progress</th><th>Closes</th></tr></thead><tbody>
+   @for(b of bids();track b.id){@let t=tender(b.tenderId);<tr (click)="openBid(b,b.status==='draft'?'proposal':'tracking')" tabindex="0"><td><b>{{t?.title||'Tender'}}</b><small>{{t?.issuer}}</small></td><td>{{money(b.amount,b.currency)}}</td><td><span class="status" [attr.data-t]="statusTone(b.status)">{{b.status}}</span></td>
+    <td><div class="mini">@for(s of stages;track s.key){<i [class.done]="stageIndex(b.tracking?.stage||'draft')>=stageIndex(s.key)" [title]="s.label"></i>}</div><small>{{b.tracking?.stage==='opened'?'Opened by buyer '+ago(b.tracking.openedAt):b.tracking?.stage==='under_review'?'Under review':b.tracking?.stage==='decision'?(b.status==='awarded'?'Awarded':'Decided'):b.tracking?.stage==='submitted'?'Awaiting buyer':'Draft'}}</small></td><td>{{t?(closed(t)?'Closed':remaining(t)):''}}</td></tr>}
+   @empty{<tr><td colspan="5" class="muted">No bids yet. Open an opportunity and choose Prepare bid.</td></tr>}</tbody></table>
+ }
+
+ <!-- ─── My tenders ─────────────────────────────────────────────────────────── -->
+ @else if(tab==='tenders'){
+  <div class="toolbar"><h2 class="grow">My tenders</h2><button class="primary" (click)="newTender()">New tender</button></div>
+  <table class="table rows"><thead><tr><th>Tender</th><th>Status</th><th>Value</th><th>Closes</th><th>Bids</th></tr></thead><tbody>
+   @for(t of myTenders();track t.id){<tr (click)="openTender(t,t.status==='draft'?'overview':'bids')" tabindex="0"><td><b>{{t.title}}</b><small>{{t.category}} · {{t.country}}</small></td><td><span class="status" [attr.data-t]="statusTone(t.status)">{{t.status==='published'&&closed(t)?'closed':t.status}}</span></td><td>{{t.budget?money(t.budget,t.currency):'—'}}</td><td>{{t.status==='published'&&!closed(t)?remaining(t):day(t.deadline)}}</td><td>{{t.bidCount??0}}</td></tr>}
+   @empty{<tr><td colspan="5" class="muted">You haven't issued any tenders. Any organisation can publish one.</td></tr>}</tbody></table>
+ }
+
+ <!-- ─── Messages ───────────────────────────────────────────────────────────── -->
+ @else if(tab==='messages'){
+  <div class="inbox"><aside class="threads">@for(c of conversations();track c.id){@if(c.messages.length||conversation()?.id===c.id){<button class="thread" [class.on]="conversation()?.id===c.id" (click)="openConversation(c)"><b>{{c.counterpart?.company}}</b><span>{{c.subject}}</span><small>{{c.last?(c.last.channel==='call'?'Call · ':c.last.channel==='email'?'Email · ':'')+c.last.body.slice(0,60):'No messages yet'}}</small>@if(c.unread){<i class="count">{{c.unread}}</i>}</button>}}@empty{<p class="muted pad">No conversations yet. Use Contact buyer on a tender or Message on a bid.</p>}</aside>
+   <section class="thread-view">@if(conversation();as c){
+    <header class="thread-head"><div><b>{{c.counterpart?.company}}</b><small>{{c.counterpart?.name}}{{c.counterpart?.title?' · '+c.counterpart.title:''}} · {{c.subject}}</small></div>
+     <div class="actions">@if(c.counterpart?.email){<a class="btn" [href]="'mailto:'+c.counterpart.email">{{c.counterpart.email}}</a>}@if(c.counterpart?.phone){<a class="btn" [href]="'tel:'+c.counterpart.phone">Call {{c.counterpart.phone}}</a>}@if(c.tenderId&&tender(c.tenderId)){<button class="ghost" (click)="openTender(tender(c.tenderId))">Open tender</button>}</div></header>
+    <div class="msgs">@for(m of c.messages;track m.id){<div class="msg" [class.me]="m.from===user.id" [attr.data-c]="m.channel"><small>{{m.channel==='message'?'':m.channel==='call'?'Call · '+m.meta?.outcome+(m.meta?.minutes?' · '+m.meta.minutes+' min':''):m.channel==='email'?'Email'+(m.meta?.delivery==='graph8'?' · sent via Graph8':' · sent from mail app'):'Private note'}}</small><p>{{m.body}}</p><small>{{date(m.at)}}</small></div>}@empty{<p class="muted pad">Start the conversation below.</p>}</div>
+    <div class="composer"><div class="seg"><button [class.on]="compose.channel==='message'" (click)="compose.channel='message'">Message</button><button [class.on]="compose.channel==='email'" (click)="compose.channel='email'">Email</button><button [class.on]="compose.channel==='call'" (click)="compose.channel='call'">Log call</button><button [class.on]="compose.channel==='note'" (click)="compose.channel='note'">Private note</button></div>
+     @if(compose.channel==='email'){<input [(ngModel)]="compose.subject" placeholder="Subject">}
+     @if(compose.channel==='call'){<div class="grid2"><label>Outcome<select [(ngModel)]="compose.outcome"><option value="connected">Connected</option><option value="voicemail">Left voicemail</option><option value="no_answer">No answer</option></select></label><label>Minutes<input type="number" min="0" [(ngModel)]="compose.minutes"></label></div>}
+     <textarea rows="3" [(ngModel)]="compose.body" [placeholder]="compose.channel==='call'?'What was discussed and agreed':compose.channel==='note'?'Only you can see this note':'Write a message'"></textarea>
+     <div class="actions right"><button class="primary" (click)="send()" [disabled]="busy()||!compose.body.trim()">{{compose.channel==='email'?'Send email':compose.channel==='call'?'Save call':compose.channel==='note'?'Save note':'Send'}}</button></div></div>
+   }@else{<p class="muted pad">Select a conversation.</p>}</section></div>
+ }
+
+ <!-- ─── Contacts ───────────────────────────────────────────────────────────── -->
+ @else if(tab==='contacts'){
+  <section class="panel"><div class="row-head"><h3>Cold outreach</h3>@if(ob();as o){<span class="muted small">{{o.credits?(o.credits.available|number)+' Graph8 credits available':'Credits unknown'}} · {{o.mailboxes.length?'Sending from '+o.mailboxes[0].email:'No sending mailbox connected'}}</span>}</div>
+   @if(ob()&&!ob().mailboxes.length){<div class="alert warn"><span>Emails can be prepared, but Graph8 can only send them once a mailbox is connected (Graph8 → Settings → Mailboxes). Enrichment and verification work now.</span></div>}
+   <div class="toolbar"><label class="grow">Audience (Graph8 list)<select [(ngModel)]="obList" (ngModelChange)="loadMembers()"><option value="">Choose a list</option>@for(l of obLists();track l.id){<option [value]="''+l.id">{{l.title}} ({{l.total}})</option>}</select></label></div>
+   <div class="actions"><button (click)="obAll(true)" [disabled]="!obMembers().length">Select all</button><button (click)="obAll(false)">Clear</button><span class="muted small">{{obSelected().length}} selected</span>
+    <button (click)="enrich()" [disabled]="busy()||!obSelected().length">Find work emails & phones</button><button (click)="verify()" [disabled]="busy()||!obSelected().length">Verify emails</button><button class="primary" (click)="newSequence()" [disabled]="!obList">New email sequence</button></div>
+   <table class="table"><thead><tr><th></th><th>Name</th><th>Work email</th><th>Phone</th><th></th></tr></thead><tbody>
+    @for(m of obMembers();track m.id){<tr><td><input type="checkbox" [(ngModel)]="obPick[m.id]" [attr.aria-label]="'Select '+m.name"></td><td><b>{{m.name}}</b><small>{{m.title}}</small></td>
+     <td>@if(m.email){<a [href]="'mailto:'+m.email">{{m.email}}</a><small><span class="tag" [class.accent]="m.verification!=='valid'">{{m.verification==='valid'?'Verified':m.verification==='invalid'?'Invalid':m.verification==='catch_all'?'Catch-all':m.verification==='checked'?'Checked':'Not verified'}}</span></small>}@else{<span class="muted">Not enriched</span>}</td>
+     <td>@if(m.phone){<a [href]="'tel:'+m.phone">{{m.phone}}</a>}@else{<span class="muted">—</span>}</td>
+     <td class="right">@if(m.linkedin){<a class="btn" [href]="'https://'+m.linkedin.replace('https://','')" target="_blank" rel="noopener">LinkedIn</a>}</td></tr>}
+    @empty{<tr><td colspan="5" class="muted">{{obList?'This list has no contacts.':'Choose a Graph8 list. Lists created by BidFlow supplier suggestions and Run My Goal appear here.'}}</td></tr>}</tbody></table>
+   @if(obJobs().length){<h3 style="margin-top:16px">Enrichment jobs</h3>@for(j of obJobs().slice(0,5);track j.id){<p class="small">{{date(j.startedAt)}} · {{j.total}} contacts · <b>{{j.status}}</b>@if(j.successful!=null){ · {{j.successful}} enriched}@if(j.creditsUsed!=null){ · {{j.creditsUsed}} credits used}@for(w of j.warnings||[];track $index){<br><span class="muted">{{w}}</span>}</p>}}
+   @if(obSeqs().length){<h3 style="margin-top:16px">Sequences</h3><table class="table"><thead><tr><th>Sequence</th><th>Steps</th><th>Enrolled</th><th>Performance</th><th></th></tr></thead><tbody>
+    @for(s of obSeqs();track s.id){<tr><td><b>{{s.name}}</b><small>{{s.status}} · created {{day(s.createdAt)}}</small></td><td>{{s.steps.length}} emails</td><td>{{s.enrolled?.length||0}}</td><td class="small">{{statLine(obStats[s.id])||'—'}}</td>
+     <td class="right"><button (click)="seqStats(s)">Refresh stats</button><button class="primary" (click)="enroll(s)" [disabled]="busy()||!ob()?.mailboxes?.length||!obSelected().length" [title]="ob()?.mailboxes?.length?'Enroll the selected contacts':'Connect a mailbox in Graph8 first'">Enroll selected</button></td></tr>}</tbody></table>}
+  </section>
+  <section class="panel"><h3>Organisations you work with</h3><table class="table"><thead><tr><th>Organisation</th><th>Contact</th><th>Email</th><th>Phone</th><th></th></tr></thead><tbody>
+   @for(c of contacts().network;track c.id){<tr><td><b>{{c.company}}</b></td><td>{{c.name}}<small>{{c.title}}</small></td><td><a [href]="'mailto:'+c.email">{{c.email}}</a></td><td>@if(c.phone){<a [href]="'tel:'+c.phone">{{c.phone}}</a>}@else{<span class="muted">—</span>}</td><td class="right"><button (click)="startConversation({toUserId:c.id})">Message</button></td></tr>}
+   @empty{<tr><td colspan="5" class="muted">Organisations appear here once you bid, receive bids or exchange messages.</td></tr>}</tbody></table></section>
+  <section class="panel"><h3>Invited suppliers (Graph8)</h3><p class="muted small">Decision makers you invited through BidFlow. Email addresses are available once enriched in Graph8.</p><table class="table"><thead><tr><th>Name</th><th>Company</th><th>Tender</th><th></th></tr></thead><tbody>
+   @for(c of contacts().graph8;track $index){<tr><td><b>{{c.name}}</b><small>{{c.title}}</small></td><td>{{c.company}}<small>{{c.domain}}</small></td><td>{{c.tender}}</td><td class="right">@if(c.linkedin){<a class="btn" [href]="'https://'+c.linkedin.replace('https://','')" target="_blank" rel="noopener">LinkedIn</a>}<button (click)="graph8Note(c)" [disabled]="busy()">Log note in Graph8</button></td></tr>}
+   @empty{<tr><td colspan="4" class="muted">No Graph8 suppliers invited yet. Use Suggested suppliers on one of your tenders.</td></tr>}</tbody></table></section>
+ }
+
+ <!-- ─── Dialogs ────────────────────────────────────────────────────────────── -->
+ @if(dialog==='tender'){<div class="overlay" (click)="dialog=''"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t" (click)="$event.stopPropagation()" (keydown.escape)="dialog=''">
+  <header><h2 id="dlg-t">{{editingId?'Edit tender':'New tender'}}</h2><button class="link" (click)="dialog=''">Close</button></header>
+  @if(editingId&&tender(editingId)?.status==='published'){<div class="alert warn">This tender is live. Saving publishes an addendum listing the changes and notifies bidders. The closing time can only be extended.</div>}
+  <form (ngSubmit)="saveTender()"><label>Title<input name="title" [(ngModel)]="form.title" required></label><label>Scope, requirements and evaluation criteria<textarea name="description" rows="6" [(ngModel)]="form.description" required></textarea></label>
+   <div class="grid2"><label>Category<select name="category" [(ngModel)]="form.category">@for(c of summary()?.categories;track c){<option>{{c}}</option>}</select></label><label>Country<input name="country" [(ngModel)]="form.country" required></label><label>Currency<input name="currency" [(ngModel)]="form.currency" pattern="[A-Z]{3}" maxlength="3" required></label><label>Estimated value<input name="budget" type="number" min="0" [(ngModel)]="form.budget" required></label>
+    <label>Closing date and time<input name="deadline" type="datetime-local" [(ngModel)]="form.deadline" required></label><label>Questions close (optional)<input name="cd" type="datetime-local" [(ngModel)]="form.clarificationDeadline"></label></div>
+   <label>Official notice URL (optional)<input name="sourceUrl" [(ngModel)]="form.sourceUrl" placeholder="https://"></label>
+   @if(editingId&&tender(editingId)?.status==='published'){<label>Note to bidders (optional)<textarea name="note" rows="2" [(ngModel)]="form.note"></textarea></label>}
+   <p class="muted small">Times are in {{timezone}}.</p><div class="actions right"><button type="button" (click)="dialog=''">Cancel</button><button class="primary" [disabled]="busy()">{{editingId?'Save changes':'Create draft'}}</button></div></form></section></div>}
+
+ @if(dialog==='account'){<div class="overlay" (click)="dialog=''"><section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-a" (click)="$event.stopPropagation()" (keydown.escape)="dialog=''">
+  <header><h2 id="dlg-a">Account and supplier profile</h2><button class="link" (click)="dialog=''">Close</button></header>
+  @if(account();as a){<h3>Contact details</h3><p class="muted small">Shared with organisations you do business with on this network.</p><div class="grid2"><label>Your name<input [(ngModel)]="a.name"></label><label>Job title<input [(ngModel)]="a.title"></label><label>Organisation<input [(ngModel)]="a.company"></label><label>Phone<input [(ngModel)]="a.phone" placeholder="+92 …"></label><label>Website<input [(ngModel)]="a.website" placeholder="https://"></label><label>Email<input [value]="a.email" disabled></label></div>}
+  <h3>Supplier profile</h3><p class="muted small">Used to match you with tenders and by the BidFlow agent. Leave services empty if you only buy.</p>
+  <div class="grid2"><label>Company name<input [(ngModel)]="profile.company"></label><label>Categories (comma separated)<input [(ngModel)]="profile.categories" [placeholder]="summary()?.categories?.slice(0,3).join(', ')"></label><label>Countries (comma separated, blank = any)<input [(ngModel)]="profile.countries"></label><label>Import from Graph8 company ID<span class="inline"><input [(ngModel)]="companyId"><button type="button" (click)="importCompany()" [disabled]="busy()||!companyId">Import</button></span></label></div>
+  <label>Services and evidenced capabilities<textarea rows="5" [(ngModel)]="profile.services"></textarea></label><label class="check"><input type="checkbox" [(ngModel)]="profile.autoDraft">Prepare private drafts automatically for strong matches</label>
+  <div class="actions right"><button (click)="dialog=''">Cancel</button><button class="primary" (click)="saveAccount()" [disabled]="busy()">Save</button></div></section></div>}
+
+ @if(dialog==='sequence'){<div class="overlay" (click)="dialog=''"><section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-q" (click)="$event.stopPropagation()" (keydown.escape)="dialog=''">
+  <header><h2 id="dlg-q">New email sequence</h2><button class="link" (click)="dialog=''">Close</button></header>
+  <p class="muted small">Created in Graph8's sequencer. Merge fields: <span ngNonBindable>{{first_name}}, {{company_name}}</span>. Nothing is sent until you enroll contacts with a connected mailbox; a reply stops the sequence for that person.</p>
+  <label>Name<input [(ngModel)]="seqForm.name"></label>
+  @for(s of seqForm.steps;track $index;let i=$index){<div class="panel-inner"><div class="grid3"><label>Step {{i+1}} · send on day<input type="number" min="0" [(ngModel)]="s.day"></label><label class="span2">Subject<input [(ngModel)]="s.subject"></label></div><label>Body<textarea rows="4" [(ngModel)]="s.body"></textarea></label>@if(seqForm.steps.length>1){<button class="link" (click)="seqForm.steps.splice(i,1)">Remove step</button>}</div>}
+  <div class="actions"><button (click)="seqForm.steps.push({day:(seqForm.steps.at(-1)?.day||0)+4,subject:'',body:''})" [disabled]="seqForm.steps.length>=6">Add step</button></div>
+  <div class="actions right"><button (click)="dialog=''">Cancel</button><button class="primary" (click)="createSequence()" [disabled]="busy()||!seqForm.name">Create in Graph8</button></div></section></div>}
+
+ @if(dialog==='scoring'){<div class="overlay" (click)="dialog=''"><section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-s" (click)="$event.stopPropagation()" (keydown.escape)="dialog=''">
+  <header><h2 id="dlg-s">How scoring works</h2><button class="link" (click)="dialog=''">Close</button></header>
+  <h3>Opportunity match (0–100)</h3><table class="table"><tbody><tr><td>Category is in your profile</td><td class="right">60</td></tr><tr><td>Tender country is in your profile countries (or you left countries blank)</td><td class="right">20</td></tr><tr><td>Service keywords from your profile found in the title/scope (5 each, max 4)</td><td class="right">20</td></tr></tbody></table>
+  <p class="muted small">Only category + country together count as a match. This is relevance, not a probability of winning.</p>
+  <h3>Supplier suggestions for your tenders (BidFlow)</h3><table class="table"><tbody><tr><td>Industry matches the tender's contractor profile (30) or adjacent (18)</td><td class="right">30</td></tr><tr><td>Same state/region (25) or same country (15)</td><td class="right">25</td></tr><tr><td>Company size fits the contract value</td><td class="right">20</td></tr><tr><td>Scope keywords in the company description (5 each)</td><td class="right">25</td></tr><tr><td>Registered on this network (+10) · already in your CRM (+5)</td><td class="right">bonus</td></tr></tbody></table>
+  <p class="muted small">The top 25 by these rules are re-read by Graph8's LLM (gpt-4o-mini, via a Graph8 skill), which scores each description against the tender. Final score = 70% LLM + 30% rules. Nothing is trained on your data; if the LLM is unavailable the rules score is used.</p>
+  <h3>Bid evaluation</h3><p class="small">The buyer enters technical and commercial scores (0–100). The comparison weights them 50/50 and flags missing evidence, currency mismatches and offers above budget. The award is always the buyer's decision.</p>
+ </section></div>}
+</div>

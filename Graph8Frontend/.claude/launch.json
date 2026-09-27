@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bidflow-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "server"],
+      "port": 4301
+    },
+    {
+      "name": "bidflow-web",
+      "url": "http://localhost:4200"
+    }
+  ]
+}

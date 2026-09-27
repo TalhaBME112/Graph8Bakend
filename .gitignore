@@ -1,0 +1,29 @@
+# Local IDE files
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Credentials and runtime state
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.sqlite.key
+*.db
+*.db-*
+*.pem
+*.pfx
+*.key
+**/server/data/
+
+# Generated application output
+**/node_modules/
+**/dist/
+**/.angular/
+**/test-results/
+**/playwright-report/
+**/coverage/
+*.log

@@ -1,0 +1,171 @@
+<div class="bf">
+ @if(error()){<div class="alert error" role="alert">{{error()}}<button (click)="error.set('')">Dismiss</button></div>}
+ @if(notice()){<div class="alert" role="status">{{notice()}}<button (click)="notice.set('')">✕</button></div>}
+
+ <section class="hero">
+  <div><h2>BidFlow agent</h2><p>Runs step-by-step agents on your tenders: supplier suggestions for tenders you issue, and bid preparation for opportunities you pursue. Nothing is sent or submitted without your approval.</p></div>
+  @if(status();as s){<dl class="chips">
+   <div><dt>Graph8 organisation</dt><dd [class.ok]="s.identity">{{s.identity?.name||'Not connected'}}</dd></div>
+   <div><dt>Model</dt><dd>{{s.skill?s.skill.model+' (Graph8 skill)':'Rules only'}}</dd></div>
+   <div><dt>Email sending</dt><dd [class.warn]="!s.mailboxes">{{s.mailboxes?s.mailboxes+' mailbox connected':'Drafts only'}}</dd></div>
+   <div><dt>Public notices</dt><dd>{{externalCount()}} open</dd></div>
+  </dl>}
+ </section>
+
+ <nav class="tabs" aria-label="BidFlow sections">
+  <button [class.active]="view==='runs'" (click)="view='runs'">Agent runs</button>
+  <button [class.active]="view==='graph'" (click)="view='graph'">Graph blueprint</button>
+  <button [class.active]="view==='feeds'" (click)="view='feeds'">Public feeds</button>
+  @if(bidder()){<button [class.active]="view==='identity'" (click)="view='identity'">Supplier identity & autopilot</button>}
+  <button class="ghost" (click)="refresh()" [disabled]="busy()">Refresh</button>
+ </nav>
+
+ @if(view==='runs'){
+ <div class="layout">
+  <aside class="launch">
+   @if(issuer()){
+    <h3>Your tenders</h3>
+    @for(t of myTenders();track t.id){
+     <div class="pick" [class.current]="run()?.tenderId===t.id">
+      <div><b>{{t.title}}</b><small>{{t.status}} · {{t.category}} · {{t.country}}</small>@if(t.bidflow){<small class="okt">✓ {{t.bidflow.invited}} contractors invited via Graph8</small>}</div>
+      @if(runFor(t);as r){<span class="two"><button (click)="openRun(r.id)"><i class="dot" [attr.data-s]="r.status"></i>{{r.status==='awaiting_approval'?'Review':'Open'}}</button>@if(finished(r)){<button title="Run again" (click)="startMatch(t)" [disabled]="busy()">↻</button>}</span>}
+      @else{<button class="primary" (click)="startMatch(t)" [disabled]="busy()">Suggest</button>}
+     </div>}@empty{<p class="muted">Create and publish a tender — BidFlow starts contractor matching automatically on publish.</p>}
+   }
+   @if(bidder()){
+    <h3>Opportunities</h3>
+    <div class="filter"><input placeholder="Search scope, country…" [(ngModel)]="query"><label class="check"><input type="checkbox" [(ngModel)]="onlyExternal">Public feeds only</label></div>
+    @for(t of opportunities();track t.id){
+     <div class="pick" [class.current]="run()?.tenderId===t.id">
+      <div><b>{{t.title}}</b><small>@if(t.external){<span class="src">{{t.source?.name}}</span>}@else{<span class="src native">Marketplace</span>}@if(t.invited){<span class="src inv">Invited</span>} {{t.country}} · {{t.budget?money(t.budget,t.currency):'value n/a'}}</small><small>Match {{t.match?.score??'—'}}/100 · closes {{date(t.deadline)}}</small></div>
+      @if(runFor(t);as r){<span class="two"><button (click)="openRun(r.id)"><i class="dot" [attr.data-s]="r.status"></i>{{r.status==='awaiting_approval'?'Review':'Open'}}</button>@if(finished(r)){<button title="Run again" (click)="startPursuit(t)" [disabled]="busy()">↻</button>}</span>}
+      @else{<button class="primary" (click)="startPursuit(t)" [disabled]="busy()">Pursue</button>}
+     </div>}@empty{<p class="muted">No open opportunities match. Sync a public feed or clear filters.</p>}
+   }
+   <h3>Recent runs</h3>
+   @for(r of runs();track r.id){<button class="runrow" [class.current]="run()?.id===r.id" (click)="openRun(r.id)"><i class="dot" [attr.data-s]="r.status"></i><span><b>{{r.title}}</b><small>{{r.graphName}} · {{r.status.replace('_',' ')}} · {{ago(r.updatedAt||r.createdAt)}}{{r.trigger!=='manual'?' · auto: '+r.trigger.replace('_',' '):''}}</small></span></button>}@empty{<p class="muted">No runs yet.</p>}
+  </aside>
+
+  <main class="stage">
+   @if(run();as r){
+    <header class="runhead">
+     <div><p class="eyebrow">{{r.graphName}} · run {{r.id.slice(0,8)}} · {{r.trigger==='manual'?'started manually':'auto-triggered: '+r.trigger.replace('_',' ')}}</p><h2>{{r.state?.tender?.title}}</h2><p class="muted">{{r.state?.tender?.issuer}} · {{r.state?.tender?.country}} · {{r.state?.tender?.budget?money(r.state.tender.budget,r.state.tender.currency):'value not stated'}} · closes {{date(r.state?.tender?.deadline)}}@if(r.state?.tender?.sourceUrl){ · <a [href]="r.state.tender.sourceUrl" target="_blank" rel="noopener">official notice ↗</a>}</p></div>
+     <div class="status" [attr.data-s]="r.status"><i class="dot" [attr.data-s]="r.status"></i>{{r.stale?'interrupted':r.status.replace('_',' ')}}</div>
+    </header>
+    <div class="kpis">
+     <div><span>Nodes executed</span><b>{{r.steps.length}}</b></div>
+     <div><span>Agent time</span><b>{{duration(totalMs())}}</b></div>
+     <div><span>Graph8 LLM executions</span><b>{{llmCalls().length}}</b><small>{{tokens().toLocaleString()}} tokens</small></div>
+     <div><span>Graph8 API calls</span><b>{{g8Calls().length}}</b></div>
+     <div class="acts">@if(r.stale||r.status==='failed'){<button (click)="resume()" [disabled]="busy()">Resume</button>}@if(['running','awaiting_approval'].includes(r.status)){<button (click)="cancel()" [disabled]="busy()">Cancel run</button>}</div>
+    </div>
+    @if(r.error){<div class="alert error">{{r.error}}</div>}
+
+    <!-- Live graph canvas -->
+    @if(graph();as g){
+    <div class="canvas" role="img" [attr.aria-label]="g.name+' graph'">
+     @for(n of g.nodes;track n.id;let last=$last){
+      <div class="node" [attr.data-s]="nodeState(n.id)" [attr.data-k]="n.kind" [title]="n.about">
+       <span class="k">{{kinds[n.kind]}}</span><b>{{n.label}}</b>
+       @if(stepsFor(n.id).length>1){<em class="iter">×{{stepsFor(n.id).length}}</em>}
+       @if(branches(n.id).length){<small class="br">@for(e of branches(n.id);track e.label){<span [class.on]="taken(n.id).includes(e.label)">{{e.label}}</span>}</small>}
+      </div>
+      @if(!last){<span class="arrow">→</span>}
+     }
+    </div>
+    @if(loops().length){<div class="loops">@for(l of loops();track l.from+l.to){<span [class.on]="l.count">⟲ {{l.label||'feedback loop'}}: {{l.fromLabel}} → {{l.toLabel}}{{l.count?' · taken ×'+l.count:''}}</span>}</div>}
+    }
+
+    <!-- Human-in-the-loop & results -->
+    @if(r.graphId==='contractor_match'&&r.state?.matches?.length){
+     <section class="panel">
+      <div class="section-head"><div><p class="eyebrow">Suggested contractors · Graph8 intelligence</p><h3>{{r.status==='awaiting_approval'?'Pick who to invite':'Ranked contractor shortlist'}}</h3>@if(r.state.icp){<p class="muted">ICP: {{r.state.icp.industries?.join(', ')}} · {{place(...(r.state.icp.states||[]),...(r.state.icp.countries||[]))}}{{r.state.broaden?' · broadened ×'+r.state.broaden:''}}</p>}</div>
+       @if(r.status==='awaiting_approval'){<div class="approve"><span>{{selectedCount()}} companies · {{contactCount()}} contacts</span><button (click)="approveMatch('reject')" [disabled]="busy()">Reject all</button><button class="primary" (click)="approveMatch('approve')" [disabled]="busy()||!selectedCount()">Approve & push to Graph8</button></div>}</div>
+      <div class="contractors">
+       @for(m of matches();track m.domain){
+        <article class="co" [class.sel]="picks[m.domain]">
+         <div class="co-top">
+          @if(r.status==='awaiting_approval'){<input type="checkbox" [(ngModel)]="picks[m.domain]" [attr.aria-label]="'Invite '+m.name">}
+          <svg viewBox="0 0 44 44" class="ring" [attr.data-t]="tone(m.score)"><circle cx="22" cy="22" r="18"/><circle class="v" cx="22" cy="22" r="18" [attr.stroke-dasharray]="ring(m.score)"/><text x="22" y="27">{{m.score}}</text></svg>
+          <div class="co-id"><b>{{m.name}}</b><small>{{place(m.city,m.state,m.country)}} · {{m.employee_count||'size n/a'}}{{m.revenue?' · '+m.revenue:''}}</small>
+           <small class="tags"><span class="src">{{m.source}}</span>@if(m.inCrm){<span class="src crm">In your CRM</span>}@if(m.domain&&!m.domain.startsWith('network:')){<a [href]="'https://'+m.domain" target="_blank" rel="noopener">{{m.domain}}</a>}@if(m.linkedin_url){<a [href]="'https://'+m.linkedin_url.replace('https://','')" target="_blank" rel="noopener">LinkedIn</a>}</small></div>
+         </div>
+         <ul class="why">@for(x of m.reasons;track $index){<li>{{x}}</li>}@for(x of m.risks||[];track $index){<li class="risk">{{x}}</li>}</ul>
+         @if(m.contacts?.length){<div class="people">@for(p of m.contacts;track p.key){<label class="person">@if(r.status==='awaiting_approval'){<input type="checkbox" [(ngModel)]="people[m.domain][p.key]">}<span><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.job_title}}{{p.emailAvailable?' · email on file':''}}</small></span>@if(p.linkedin_url){<a [href]="'https://'+p.linkedin_url.replace('https://','')" target="_blank" rel="noopener">in</a>}</label>}</div>}
+         @if(m.invitation&&edits[m.domain]){<button class="link" (click)="openInvite=openInvite===m.domain?'':m.domain">{{openInvite===m.domain?'Hide':'View / edit'}} invitation</button>
+          @if(openInvite===m.domain){<div class="invite">@if(r.status==='awaiting_approval'){<input [(ngModel)]="edits[m.domain].subject"><textarea rows="8" [(ngModel)]="edits[m.domain].body"></textarea>}@else{<b>{{edits[m.domain].subject}}</b><pre>{{edits[m.domain].body}}</pre>}</div>}}
+        </article>}
+      </div>
+      @if(r.state.execution;as x){
+       <div class="result"><h3>✓ Executed in Graph8</h3>
+        <div class="kpis small"><div><span>Tender list</span><b>#{{x.listId??'—'}}</b></div><div><span>Companies</span><b>{{x.companies.length}}</b></div><div><span>Contacts</span><b>{{createdContacts(x)}}</b></div><div><span>Campaign</span><b>{{x.campaignId?'Draft':'—'}}</b></div><div><span>In-app invites</span><b>{{x.networkInvites.length}}</b></div></div>
+        <p>{{x.delivery}}</p>
+        @for(c of x.companies;track c.domain){<p class="muted">◆ {{c.name}} → company #{{c.companyId}} · {{contactList(c)}}</p>}
+        @for(e of x.errors;track $index){<p class="warn-t">⚠ {{e}}</p>}
+        <a class="btn" [href]="status()?.appUrl" target="_blank" rel="noopener">Open Graph8 ↗</a>
+       </div>}
+     </section>}
+
+    @if(r.graphId==='bid_pursuit'&&r.state?.bidDecision){
+     <section class="panel">
+      <div class="grid2">
+       <div><p class="eyebrow">Bid / no-bid</p><div class="decision" [attr.data-d]="r.state.bidDecision.decision"><b>{{r.state.bidDecision.decision.replace('_','-').toUpperCase()}}</b><span>{{r.state.bidDecision.score}}/100</span></div><p>{{r.state.bidDecision.rationale}}</p>
+        @for(f of factors();track f.k){<div class="bar"><span>{{f.k}}</span><meter min="0" max="100" [value]="f.v"></meter><b>{{f.v}}</b></div>}
+        @if(r.state.bidDecision.win_themes?.length){<p class="muted">Win themes: {{r.state.bidDecision.win_themes.join(' · ')}}</p>}</div>
+       <div><p class="eyebrow">Eligibility · {{r.state.eligibility?.eligible}}</p>
+        @for(q of r.state.eligibility?.requirements||[];track $index){<div class="req" [attr.data-s]="q.status"><b>{{q.status}}</b><span>{{q.requirement}}@if(q.evidence){<small>{{q.evidence}}</small>}</span></div>}@empty{<p class="muted">No mandatory requirements extracted.</p>}</div>
+      </div>
+      @if(r.state.estimate;as e){<div class="grid2"><div><p class="eyebrow">Estimate{{e.round>1?' · re-priced ×'+(e.round-1):''}}</p><table><tbody>@for(l of e.lines||[];track $index){<tr><td>{{l.item}}</td><td>{{money(l.cost,e.currency)}}</td></tr>}<tr class="tot"><td>Price · {{e.delivery_days}} days · margin {{e.margin_pct}}%</td><td>{{money(e.price,e.currency)}}</td></tr></tbody></table>@for(a of e.assumptions||[];track $index){<small class="muted">• {{a}}</small>}</div>
+       @if(r.state.redTeam;as rt){<div><p class="eyebrow">Red team · round {{rt.round}} · {{rt.pass?'PASS':'FAIL'}} · {{rt.score}}/100</p>@for(i of rt.issues;track $index){<div class="issue" [attr.data-s]="i.severity"><b>{{i.severity}}</b> {{i.message}}</div>}@for(s of rt.strengths||[];track $index){<div class="issue" data-s="ok"><b>strength</b> {{s}}</div>}</div>}</div>}
+      @if(r.status==='awaiting_approval'){
+       <div class="approval"><h3>Approve bid</h3><p class="muted">{{r.interrupt?.message}}</p>
+        <div class="grid2 tight"><label>Offer ({{r.state.tender.currency}})<input type="number" [(ngModel)]="amount"></label><label>Delivery (days)<input type="number" [(ngModel)]="deliveryDays"></label></div>
+        <label>Proposal (markdown)<textarea rows="16" [(ngModel)]="proposal"></textarea></label>
+        <div class="acts"><button (click)="approveBid('reject')" [disabled]="busy()">Discard</button><button (click)="approveBid('approve',false)" [disabled]="busy()">Approve & save draft</button>@if(!r.state.tender.external){<button class="primary" (click)="approveBid('approve',true)" [disabled]="busy()">Approve & submit bid</button>}@else{<a class="btn" [href]="r.state.tender.sourceUrl" target="_blank" rel="noopener">Submit on official portal ↗</a>}</div></div>}
+      @else if(r.state.draft){<details><summary>Proposal draft v{{r.state.draft.revision}}</summary><pre class="doc">{{r.state.draft.proposal}}</pre></details>}
+      @if(r.state.execution;as x){<div class="result"><h3>✓ {{x.status==='submitted'?'Bid submitted':'Bid saved'}}</h3><p>{{x.note}}</p></div>}
+     </section>}
+
+    <!-- Step timeline -->
+    <section class="timeline">
+     <h3>Execution trace</h3>
+     @for(s of r.steps;track s.id){
+      <article class="step" [attr.data-s]="s.status">
+       <button class="step-h" (click)="toggle(s.id)"><span class="k">{{kinds[s.kind]}}</span><b>{{s.label}}{{s.iteration>1?' ·  pass '+s.iteration:''}}</b><span class="meta">{{duration(s.ms)}}@if(s.branch){ · → {{s.branch}}}</span></button>
+       <p>{{s.summary}}</p>
+       <div class="tags">@for(l of s.llm||[];track $index){<span class="tag llm" [class.fb]="l.engine!=='Graph8 LLM skill'">{{l.engine==='Graph8 LLM skill'?'Graph8 skill · '+l.model+' · '+(l.tokens||0)+' tok · '+duration(l.ms):'rules fallback'}}</span>}@for(o of s.ops||[];track $index){@if(!o.op.startsWith('get_execution')){<span class="tag" [class.bad]="!o.ok">◆ {{opName(o.op)}}</span>}}</div>
+       @if(expanded.has(s.id)&&s.detail){<pre class="detail">{{json(s.detail)}}</pre>}
+      </article>}
+    </section>
+   }@else{
+    <div class="empty"><h3>{{issuer()&&!bidder()?'Pick a tender to get contractor suggestions':'Pick an opportunity to run the BidFlow agent'}}</h3><p>Every run executes a stateful graph: each node’s reasoning runs as a Graph8 LLM skill, prospecting and CRM actions go through the Graph8 SDK, and nothing leaves the building without your approval.</p></div>
+   }
+  </main>
+ </div>}
+
+ @if(view==='graph'){
+  @for(g of status()?.graphs||[];track g.id){
+   <section class="panel blueprint"><p class="eyebrow">{{g.id==='contractor_match'?'Issuer graph':'Bidder graph'}}</p><h3>{{g.name}}</h3><p class="muted">{{g.description}}</p>
+    <div class="bp">@for(n of g.nodes;track n.id){<div class="bpn" [attr.data-k]="n.kind"><span class="k">{{kinds[n.kind]}}</span><div><b>{{n.label}}</b><small>{{n.about}}</small>@for(e of g.edges;track $index){@if(e.from===n.id&&e.label){<em>{{e.label}} → {{e.to==='__end__'?'END':e.to.replace('_',' ')}}</em>}}</div></div>}</div>
+   </section>}
+  <p class="legend">LLM node (Graph8 skill) · ◆ Graph8 SDK node · ◇ conditional edge · ◉ human approval · ▪ rule</p>
+ }
+
+ @if(view==='feeds'){
+  <div class="feeds">@for(f of feeds();track f.id){
+   <article class="panel feed"><div class="section-head"><div><b>{{f.name}}</b><small class="muted">{{f.about}}</small></div><label class="switch"><input type="checkbox" [checked]="f.enabled" (change)="toggleFeed(f)"><span>{{f.enabled?'Auto-sync on':'Off'}}</span></label></div>
+    <p class="muted">{{f.lastSync?'Last sync '+ago(f.lastSync)+': '+(f.lastResult?.added??0)+' new of '+(f.lastResult?.fetched??0)+' fetched':'Never synced'}}</p>@if(f.error){<p class="warn-t">⚠ {{f.error}}</p>}
+    <button class="primary" (click)="syncFeed(f)" [disabled]="busy()">Sync now</button></article>}</div>
+  <p class="legend">Enabled feeds sync every 30 minutes while the server runs. Ingested notices appear in Discover for bidders and can be pursued by the agent; submissions for public notices happen on the official portal.</p>
+ }
+
+ @if(view==='identity'&&bidder()){
+  <section class="panel"><h3>Link your supplier account to Graph8</h3>@if(profile?.graph8Company;as gc){<div class="result"><b>✓ Linked: {{gc.name}}</b><small>{{gc.domain}} · {{gc.industry}} · {{gc.employee_count}} · {{place(gc.city,gc.state,gc.country)}}</small></div>}<p class="muted">BidFlow enriches every pursuit with your company’s Graph8 firmographics (industry, size, revenue, location, description).</p>
+   <div class="filter"><input placeholder="Company name or domain (e.g. acme.com)" [(ngModel)]="companyQuery" (keydown.enter)="searchCompany()"><button class="primary" (click)="searchCompany()" [disabled]="busy()||companyQuery.length<2">Search Graph8</button></div>
+   @for(c of companyResults();track $index){<div class="pick"><div><b>{{c.name}}</b><small>{{c.domain}} · {{c.industry}} · {{c.employee_count}} · {{place(c.city,c.state,c.country)}}</small></div><button (click)="linkCompany(c)" [disabled]="busy()">Link</button></div>}
+  </section>
+  <section class="panel"><h3>Autopilot · {{profile?.autoPursue?'ON':'OFF'}}</h3><p class="muted">When on, BidFlow starts a Bid Pursuit run for up to two strong new matches per minute (marketplace and public feeds). Each run stops at the approval node — nothing is submitted without you.</p>
+   <div class="acts"><button (click)="autopilot(true)" [disabled]="busy()">Turn on</button><button (click)="autopilot(false)" [disabled]="busy()">Turn off</button></div></section>
+  @if(invites().length){<section class="panel"><h3>Invitations received</h3>@for(i of invites();track i.id){<div class="pick"><div><b>{{i.subject}}</b><small>Fit {{i.score}}/100 · {{i.reasons?.join(' · ')}}</small></div><button (click)="openTender.emit(i.tenderId)">Open tender</button></div>}</section>}
+ }
+</div>

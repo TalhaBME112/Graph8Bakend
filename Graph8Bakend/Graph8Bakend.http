@@ -1,0 +1,6 @@
+@Graph8Bakend_HostAddress = http://localhost:5296
+
+GET {{Graph8Bakend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
