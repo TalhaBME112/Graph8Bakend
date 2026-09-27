@@ -1,0 +1,24 @@
+# Render Blueprint: New → Blueprint → select this repo.
+services:
+  - type: web
+    name: graph8-bidflow
+    runtime: node
+    plan: free
+    rootDir: Graph8Frontend
+    buildCommand: npm ci && npx ng build
+    startCommand: node server/index.mjs
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: APP_ORIGIN
+        sync: false   # https://<service-name>.onrender.com
+      - key: G8_API_KEY
+        sync: false   # Graph8 API key (Hackathon org)
+      - key: SEED_USERS
+        sync: false   # JSON array of demo accounts, recreated when the disk is empty

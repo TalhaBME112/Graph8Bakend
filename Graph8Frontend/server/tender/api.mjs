@@ -23,9 +23,16 @@ export function createTenderApi(root,dependencies={}){
  function ensureDoc(org,t,id){if(!t.documents.some(d=>d.id===id))throw new AppError('Document is not attached to this tender.',404);return db.get(org,'document',id);}
  function insert(org,b,actor){const tender=newTender(b),existing=db.list(org,'tender').find(x=>x.fingerprint===tender.fingerprint);if(existing)return {duplicate:true,tender:hydrate(existing)};return {duplicate:false,tender:hydrate(db.create(org,'tender',tender,actor))};}
  async function syncSource(org,id,actor){const source=db.get(org,'source',id),rows=await fetchSource(source.url);rows.forEach(newTender);let added=0,duplicates=0;for(const row of rows){const result=insert(org,row,actor);result.duplicate?duplicates++:added++;}db.update(org,'source',id,actor,'source:checked',s=>{s.checkedAt=stamp();s.lastResult={added,duplicates};s.error=null;});return {added,duplicates};}
+ // SEED_USERS='[{"email":"…","name":"…","password":"…","role":"administrator|issuer|contributor"}]' recreates
+ // accounts when the database is empty — for demo hosts whose disk is wiped on restart.
+ const seeded=new Set();
+ function seed(orgId){if(seeded.has(orgId)||!process.env.SEED_USERS)return;seeded.add(orgId);if(db.list(orgId,'user').length)return;
+  let rows;try{rows=JSON.parse(process.env.SEED_USERS);}catch{console.error('SEED_USERS is not valid JSON; no accounts seeded.');return;}
+  for(const u of Array.isArray(rows)?rows:[]){try{createUser(db,orgId,u,['administrator','issuer','contributor','reviewer','viewer'].includes(u.role)?u.role:'contributor');}catch(e){console.error('Seed user skipped:',u?.email,e.message);}}}
  async function route(req,res,url,b){
   const p=url.pathname.split('/').filter(Boolean).slice(2),method=req.method;let org;
   try{org=await context();}catch(e){throw graph8ConnectionError(e);}
+  seed(org.id);
   const user=sessionUser(db,org.id,req),send=(value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
   limited(`${org.id}:${req.socket.remoteAddress}`);
   if(p[0]==='session'&&method==='GET')return send({org,user:user?publicUser(user):null,needsBootstrap:db.list(org.id,'user').length===0,capabilities:{crmWrite:can(org,'deals:write'),pipelineWrite:can(org,'campaigns:write'),quotes:can(org,'quotes:run'),workflow:can(org,'workflows:run')}});

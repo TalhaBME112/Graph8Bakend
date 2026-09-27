@@ -108,8 +108,9 @@ export const server = createServer(async (req, res) => {
       }
       throw new AppError('Not found.', 404);
     }
-    checkAdmin(req);
+    // Tender routes have their own session login and rate limits; the admin token gates the growth workspace.
     if(p[1]==='tender'){tenderApi??=createTenderApi(root);return await tenderApi.route(req,res,url,await body(req));}
+    checkAdmin(req);
     if(p[1]==='connection' && method==='GET') {
       try {const response=await graph8Client().call('describe_current_key_me_get',{}),data=response.data||response;return send(res,200,{orgId:data.org_id,orgName:data.org_name,keyMode:data.key_mode,verifiedAt:now()});}
       catch (error) {throw graph8ConnectionError(error);}
