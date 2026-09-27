@@ -81,9 +81,11 @@ export const server = createServer(async (req, res) => {
   try {
     const requestHost=new URL('http://'+(req.headers.host || 'invalid')).hostname;
     const validHosts=new Set(['localhost','127.0.0.1','[::1]',process.env.APP_ORIGIN ? new URL(process.env.APP_ORIGIN).hostname : '']);
-    if(!validHosts.has(requestHost))throw new AppError('Unknown host.',403);
+    // TUNNEL_HOST_SUFFIXES (e.g. .serveo.net,.lhr.life) accepts rotating tunnel hostnames without a restart.
+    const tunnelHost=(process.env.TUNNEL_HOST_SUFFIXES||'').split(',').map(x=>x.trim()).filter(Boolean).some(sfx=>requestHost.endsWith(sfx));
+    if(!validHosts.has(requestHost)&&!tunnelHost)throw new AppError('Unknown host.',403);
     const origin = req.headers.origin;
-    if (origin && !allowedOrigins.has(origin)) throw new AppError('Origin not allowed.', 403);
+    if (origin && !allowedOrigins.has(origin) && !(tunnelHost && origin === 'https://' + requestHost)) throw new AppError('Origin not allowed.', 403);
     if (!['GET', 'HEAD'].includes(req.method) && !origin && !req.headers['x-workspace-client']) throw new AppError('Missing request origin.', 403);
     if (origin) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); }
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Workspace-Client, X-Tender-Session', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE' }); return res.end(); }
