@@ -4,6 +4,8 @@ import {createTenderApi} from './tender/api.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
+const gzipCache = new Map();
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AppError, id, now, text, number, date, safeUrl, assignment, experimentResult, createRoom, createExperiment, createGoal, publicRoom } from './domain.mjs';
@@ -91,7 +93,10 @@ export const server = createServer(async (req, res) => {
       if (!candidate.startsWith(frontend + sep) && candidate !== frontend) throw new AppError('Not found.', 404);
       let file = candidate;
       if (!extname(file)) file = resolve(frontend, 'index.html');
-      try { const data = await readFile(file); res.writeHead(200, { 'Content-Type': ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' })[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); return res.end(data); }
+      try { const data = await readFile(file); const type = ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' })[extname(file)] || 'application/octet-stream';
+        // Compress text assets (the app bundle shrinks ~4x), cached per file version.
+        if (/gzip/.test(req.headers['accept-encoding'] || '') && /text|svg/.test(type)) { const k = file + ':' + data.length; let z = gzipCache.get(k); if (!z) { z = gzipSync(data, { level: 9 }); gzipCache.set(k, z); } res.writeHead(200, { 'Content-Type': type, 'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding', 'Cache-Control': 'no-cache' }); return res.end(z); }
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' }); return res.end(data); }
       catch { throw new AppError('Build the frontend with npm run build, or start npm start.', 404); }
     }
     if(p[1]==='events' && p[2]==='experiments' && method==='POST')return send(res,200,await ingestOutcome(store,p[3],req.headers['x-experiment-key'],await body(req)));
