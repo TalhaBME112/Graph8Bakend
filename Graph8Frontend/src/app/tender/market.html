@@ -20,8 +20,6 @@
   </div>
  </header>
 
- @if(error()){<div class="alert error" role="alert"><span>{{error()}}</span><button class="link" (click)="error.set('')">Dismiss</button></div>}
- @if(notice()){<div class="alert" role="status"><span>{{notice()}}</span><button class="link" (click)="notice.set('')">Dismiss</button></div>}
 
  @if(tab==='agent'){<app-bidflow [user]="user" [tenders]="tenders()" [profile]="summary()?.profile" [focus]="focusId" (changed)="load(false)" (openTender)="openFromInvite($event)" />}
 

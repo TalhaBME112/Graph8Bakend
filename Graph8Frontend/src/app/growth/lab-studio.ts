@@ -1,4 +1,5 @@
 import {Component,Input,Output,EventEmitter,signal,OnChanges} from '@angular/core';
+import {toastSignals} from '../ui';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
 import {growthApi,ago} from './api';
@@ -11,7 +12,7 @@ import {growthApi,ago} from './api';
  @if(mode==='wizard'){
   <div class="bar"><div><p class="eyebrow">DESIGN AN EXPERIMENT WITH GRAPH8</p><h3>Question → hypothesis → pre-registered A/B test</h3></div><button (click)="closed.emit()">Close</button></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
+   
    <div class="split"><div>
     <label>What do you want to learn?<textarea rows="3" [(ngModel)]="topic" placeholder="e.g. Does naming a peer customer in the subject line lift replies from logistics ops leaders?"></textarea></label>
     <div class="row"><label>Primary metric<select [(ngModel)]="metric"><option value="reply">Reply rate</option><option value="open">Open rate</option><option value="click">Click rate</option><option value="meeting">Meeting rate</option></select></label>
@@ -33,8 +34,8 @@ import {growthApi,ago} from './api';
   <div class="bar"><div><p class="eyebrow">EXPERIMENT ENGINE · GRAPH8</p><h3>{{e.plan?'Pre-registered: '+(e.plan.requiredPerArm|number)+' per arm · α '+e.plan.alpha+' · power '+(e.plan.power*100)+'%':'Pre-register this test before it starts'}}</h3><small>{{e.plan?.metricSource==='graph8'?'Outcomes read live from Graph8 campaign metrics':'Outcomes from contact-level results'}}{{e.decision?' · evaluated '+ago(e.decision.at):''}}</small></div>
    <div class="acts" style="margin:0"><button class="primary" (click)="evaluate()" [disabled]="busy()">Evaluate now</button>@if(e.status==='completed'||e.decision){<button (click)="learn()" [disabled]="busy()">Summarise learning</button>}</div></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
-   @if(notice()){<div class="alert">{{notice()}}<button (click)="notice.set('')">✕</button></div>}
+   
+   
    @if(e.decision;as v){<div class="verdict" [attr.data-d]="v.decision"><p class="eyebrow">Decision framework · {{v.source}}</p><h4>{{v.label}}</h4>
     <div class="kpis" style="margin:10px 0 0"><div><span>A</span><b>{{v.rateA*100|number:'1.1-2'}}%</b><small>{{v.A.x}} / {{v.A.n}}</small></div><div><span>B</span><b>{{v.rateB*100|number:'1.1-2'}}%</b><small>{{v.B.x}} / {{v.B.n}}</small></div><div><span>P(B beats A)</span><b>{{v.probBBeats*100|number:'1.0-1'}}%</b></div><div><span>p-value</span><b>{{v.pValue|number:'1.3-3'}}</b></div><div><span>Sample</span><b>{{v.progress*100|number:'1.0-0'}}%</b><div class="meter"><span [style.width.%]="v.progress*100>100?100:v.progress*100"></span></div></div></div>
     <ul>@for(r of v.reasons;track $index){<li>{{r}}</li>}</ul></div>}
@@ -81,4 +82,5 @@ export class LabStudio implements OnChanges{
  async launch(){if(!confirm('Create one Graph8 list and one campaign draft per arm? Nothing is sent.'))return;await this.run(async()=>{await growthApi(`experiments/${this.e.id}/launch`,'POST',{});this.changed.emit();},'A/B arms created in Graph8 as campaign drafts.');}
  async evaluate(){await this.run(async()=>{await growthApi(`experiments/${this.e.id}/decision`,'POST',{});this.changed.emit();});}
  async learn(){await this.run(async()=>{await growthApi(`experiments/${this.e.id}/learning`,'POST',{});this.changed.emit();},'Learning summarised and saved to the experiment.');}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

@@ -1,4 +1,5 @@
 import {Component,Input,Output,EventEmitter,signal,computed,OnInit,OnDestroy} from '@angular/core';
+import {toastSignals} from '../ui';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
 import {BidFlow} from './bidflow';
@@ -145,4 +146,5 @@ export class TenderMarket implements OnInit,OnDestroy{
  openAgent(id=''){this.focusId=id;this.tab='agent';this.selected.set(null);this.bid.set(null);}
  openFromInvite(id:string){const t=this.tender(id);if(t){this.tab='discover';void this.openTender(t);}}
  go(tab:Tab){this.tab=tab;this.selected.set(null);this.bid.set(null);this.conversation.set(null);if(tab==='contacts'){void this.loadContacts();void this.loadOutreach();}}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

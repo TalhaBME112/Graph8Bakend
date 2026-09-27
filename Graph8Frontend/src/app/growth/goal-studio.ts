@@ -1,4 +1,5 @@
 import {Component,Input,Output,EventEmitter,signal,OnChanges,OnDestroy} from '@angular/core';
+import {toastSignals} from '../ui';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
 import {growthApi,ago,money} from './api';
@@ -11,7 +12,7 @@ import {growthApi,ago,money} from './api';
  @if(mode==='wizard'){
   <div class="bar"><div><p class="eyebrow">PLAN WITH THE GRAPH8 GOAL AGENT</p><h3>State the outcome. The agent sizes, plans and builds it on Graph8.</h3></div><button (click)="closed.emit()">Close</button></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
+   
    <label>What do you want to achieve?<input [(ngModel)]="f.name" placeholder="e.g. Book 20 meetings with logistics operations leaders"></label>
    <label>Who is the audience?<textarea rows="2" [(ngModel)]="f.audience" placeholder="e.g. VP / Director of Operations at US logistics and freight companies, 200–2000 employees"></textarea></label>
    <div class="row"><label>Target<input type="number" min="1" [(ngModel)]="f.target"></label><label>Outcome<select [(ngModel)]="f.metric"><option>Qualified meetings</option><option>Qualified replies</option><option>New opportunities</option></select></label><label>Deadline<input type="date" [(ngModel)]="f.deadline"></label><label>Planning budget (USD)<input type="number" min="0" [(ngModel)]="f.budget"></label></div>
@@ -22,8 +23,8 @@ import {growthApi,ago,money} from './api';
   <div class="bar"><div><p class="eyebrow">GOAL ORCHESTRATOR · GRAPH8</p><h3>{{run()?statusText(run()):'Not orchestrated yet'}}</h3>@if(goal.pace){<small>Pace: {{goal.pace.status.replace('_',' ')}} · {{goal.achieved}} achieved vs {{goal.pace.expectedByNow}} expected by now · {{goal.pace.sent}} sent · synced {{ago(goal.pace.at)}}</small>}</div>
    <div class="acts" style="margin:0">@if(!run()||['completed','failed','cancelled'].includes(run().status)){<button class="primary" (click)="orchestrate()" [disabled]="busy()">{{run()?'↻ Re-plan':'Run goal agent'}}</button>}@if(goal.orchestration?.campaigns){<button (click)="sync()" [disabled]="busy()">Sync progress from Graph8</button>}@if(run()?.stale||run()?.status==='failed'){<button (click)="resume()" [disabled]="busy()">Resume</button>}</div></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
-   @if(notice()){<div class="alert">{{notice()}}<button (click)="notice.set('')">✕</button></div>}
+   
+   
    @if(run();as r){
     @if(graph();as g){<div class="canvas">@for(n of g.nodes;track n.id;let last=$last){<div class="node" [attr.data-s]="state(n.id)" [title]="n.about"><span class="k">{{kind[n.kind]}}</span><b>{{n.label}}</b>@if(steps(n.id).length>1){<em class="iter">×{{steps(n.id).length}}</em>}</div>@if(!last){<span class="arrow">→</span>}}</div>}
     @if(r.state?.funnel;as fu){<div class="kpis"><div><span>Reachable in Graph8</span><b>{{r.state.market?.tam|number}}</b></div><div><span>Contacts needed</span><b>{{fu.contactsNeeded|number}}</b><small>{{fu.conversion*100|number:'1.2-2'}}% → {{goal.metric}}</small></div><div><span>Weekly pace</span><b>{{fu.contactsPerWeek|number}}</b><small>over {{fu.weeks}} weeks</small></div><div><span>A/B sample / arm</span><b>{{fu.abSamplePerArm|number}}</b></div><div><span>Feasible</span><b>{{fu.feasible?'Yes':'Stretch'}}</b></div></div>}
@@ -60,4 +61,5 @@ export class GoalStudio implements OnChanges,OnDestroy{
  async approve(decision:string){await this.run$(async()=>{this.run.set(await growthApi(`runs/${this.run().id}/approve`,'POST',{decision,contacts:Number(this.contacts),...this.opt}));this.poll();},decision==='approve'?'Approved — building on Graph8…':'Plan rejected.');}
  async resume(){await this.run$(async()=>{this.run.set(await growthApi(`runs/${this.run().id}/resume`,'POST',{}));this.poll();});}
  async sync(){await this.run$(async()=>{await growthApi(`goals/${this.goal.id}/sync`,'POST',{});this.changed.emit();},'Progress synced from Graph8 campaign metrics.');}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

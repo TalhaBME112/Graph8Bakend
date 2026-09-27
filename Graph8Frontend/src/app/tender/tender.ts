@@ -1,4 +1,5 @@
 import {TenderMarket} from './market';
+import {toastSignals} from '../ui';
 import {Component,signal,computed,OnDestroy} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
@@ -69,4 +70,5 @@ export class TenderWorkspace implements OnDestroy{
  if(await this.act(this.formAction==='edit'?'':this.formAction,data,this.formMethod))this.modal.set('');
  }
  async sourceAction(source:any,action:string){this.busy.set(true);this.error.set('');try{await this.api(`sources/${source.id}${action==='sync'?'/sync':''}`,action==='sync'?'POST':'PATCH',action==='sync'?{}:{enabled:!source.enabled});this.sources.set(await this.api('sources'));await this.reload();this.notice.set('Source updated.');}catch(e){this.error.set(this.message(e));}finally{this.busy.set(false);}}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

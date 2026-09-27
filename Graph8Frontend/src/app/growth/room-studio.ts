@@ -1,4 +1,5 @@
 import {Component,Input,Output,EventEmitter,signal} from '@angular/core';
+import {toastSignals} from '../ui';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
 import {growthApi,money,ago} from './api';
@@ -10,7 +11,7 @@ import {growthApi,money,ago} from './api';
  @if(mode==='wizard'){
   <div class="bar"><div><p class="eyebrow">NEW ROOM FROM GRAPH8</p><h3>Real account · real stakeholders · live Graph8 deal</h3></div><button (click)="closed.emit()">Close</button></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
+   
    <div class="split"><div>
     <p class="eyebrow">1 · Buyer company (Graph8 open index)</p>
     <div class="row"><input placeholder="Company name or domain, e.g. stellar.net" [(ngModel)]="q" (keydown.enter)="search()"><button class="primary" style="flex:0" (click)="search()" [disabled]="busy()||q.length<2">Search</button></div>
@@ -29,8 +30,8 @@ import {growthApi,money,ago} from './api';
   <div class="bar"><div><p class="eyebrow">GRAPH8 DEAL SYNC</p><h3>{{room.intel?.deal?.name||'Not linked to a Graph8 deal'}}</h3>@if(room.intel){<small>Synced {{ago(room.intel.syncedAt)}} · {{room.intel.deal.stage}} · {{money(room.intel.deal.amount,room.intel.deal.currency)}}</small>}</div>
    <div class="acts" style="margin:0">@if(room.dealId){<button (click)="act('intel','Deal intelligence refreshed from Graph8')" [disabled]="busy()">↻ Sync</button><button (click)="plan()" [disabled]="busy()">AI mutual plan</button><button (click)="act('push','Mutual plan written to the Graph8 deal as a note')" [disabled]="busy()">Push plan to Graph8</button><button (click)="nextStep()" [disabled]="busy()">Graph8 next best step</button><button class="primary" (click)="advance()" [disabled]="busy()">Advance stage →</button>}</div></div>
   <div class="body">
-   @if(error()){<div class="alert error">{{error()}}<button (click)="error.set('')">✕</button></div>}
-   @if(notice()){<div class="alert">{{notice()}}<button (click)="notice.set('')">✕</button></div>}
+   
+   
    @if(!room.dealId){<p class="muted">Link this room to a Graph8 deal to sync stakeholders, stage readiness, pricing and to log buyer activity on the deal.</p><div class="row"><select [(ngModel)]="dealId"><option value="">Choose a Graph8 deal…</option>@for(d of deals();track d.id){<option [value]="d.id">{{d.name}} · {{d.stage}}</option>}</select><button class="primary" style="flex:0" (click)="link()" [disabled]="busy()||!dealId">Link deal</button><button style="flex:0" (click)="loadDeals()" [disabled]="busy()">Load deals</button></div>}
    @if(room.intel;as i){
     <div class="kpis"><div><span>Stage</span><b>{{i.deal.stage}}</b></div><div><span>Value</span><b>{{money(i.deal.amount,i.deal.currency)}}</b></div><div><span>Stage readiness</span><b>{{i.readiness?.coverage??0}}%</b></div><div><span>Stakeholders</span><b>{{i.stakeholders.length}}</b></div><div><span>Buyer engagement</span><b>{{score()}}</b><small>{{(room.engagement||[]).length}} events{{room.lastBuyerActivityAt?' · last '+ago(room.lastBuyerActivityAt):''}}</small></div></div>
@@ -68,4 +69,5 @@ export class RoomStudio{
  async link(){await this.run(async()=>{await growthApi(`rooms/${this.room.id}/link-deal`,'POST',{dealId:this.dealId});this.changed.emit();},'Linked to the Graph8 deal.');}
  score(){const w:any={view:1,document:3,question:5,milestone:6};return (this.room.engagement||[]).reduce((n:number,e:any)=>n+(w[e.type]||1),0);}
  fmt(v:any){if(typeof v==='string')return v;const x=v?.suggestion||v?.next_best_step||v?.step||v;return typeof x==='string'?x:JSON.stringify(x,null,2);}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

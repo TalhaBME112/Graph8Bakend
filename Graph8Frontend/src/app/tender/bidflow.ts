@@ -1,4 +1,5 @@
 import {Component,Input,Output,EventEmitter,signal,computed,OnInit,OnDestroy,OnChanges,SimpleChanges} from '@angular/core';
+import {toastSignals} from '../ui';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
 
@@ -91,4 +92,5 @@ export class BidFlow implements OnInit,OnDestroy,OnChanges{
  async searchCompany(){await this.act(async()=>this.companyResults.set(await this.api('graph8/companies?q='+encodeURIComponent(this.companyQuery))));}
  async linkCompany(c:any){await this.act(async()=>{await this.api('profile/graph8','POST',{company:c});this.companyResults.set([]);this.changed.emit();},`Linked to ${c.name} in Graph8. BidFlow will use its firmographics in every pursuit.`);}
  async autopilot(enabled:boolean){await this.act(async()=>{await this.api('profile/autopilot','POST',{enabled});this.changed.emit();},enabled?'Autopilot on: BidFlow will start pursuits for strong new matches and pause at approval.':'Autopilot off.');}
+ private readonly toastBridge=toastSignals(this.notice,this.error);
 }

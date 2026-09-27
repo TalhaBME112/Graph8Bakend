@@ -2,12 +2,13 @@ import {TenderWorkspace} from './tender/tender';
 import {RoomStudio} from './growth/room-studio';
 import {LabStudio} from './growth/lab-studio';
 import {GoalStudio} from './growth/goal-studio';
-import { Component, computed, signal, OnDestroy, AfterViewChecked } from '@angular/core';
+import { inject, Component, computed, signal, OnDestroy, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Experiment, Room, Workspace } from './models';
+import { Toasts, ThemeService, toastSignals } from './ui';
 
-@Component({ selector: 'app-root', imports: [CommonModule, FormsModule, TenderWorkspace, RoomStudio, LabStudio, GoalStudio], templateUrl: './app.html', styleUrl: './app.scss' })
+@Component({ selector: 'app-root', imports: [CommonModule, FormsModule, TenderWorkspace, RoomStudio, LabStudio, GoalStudio, Toasts], templateUrl: './app.html', styleUrl: './app.scss' })
 export class App implements OnDestroy, AfterViewChecked {
   readonly nav = [{key:'tenders',name:'Tender Workspace',icon:'◇'}, { key: 'overview', name: 'Overview', icon: '◈' }, { key: 'rooms', name: 'Buyer Deal Rooms', icon: '▣' }, { key: 'lab', name: 'Campaign Learning Lab', icon: '◫' }, { key: 'goals', name: 'Run My Goal', icon: '◎' }];
   page = signal(location.pathname.startsWith('/buyer/') ? 'buyer' : ['overview','rooms','lab','goals','tenders'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview');
@@ -31,7 +32,7 @@ export class App implements OnDestroy, AfterViewChecked {
   private poll=window.setInterval(()=>{if(!this.busy()&&!this.modal()&&this.page()==='goals'&&this.goal()?.autopilotLocal&&this.goal()?.status==='active')void this.refresh();},6000);
   participants = ''; lesson = ''; progress = 0; accessToken = sessionStorage.getItem('g8-access') || '';
   graphRows = signal<Record<string, any>[]>([]); graphResource = ''; connectionVerified = signal(false); connection=signal<{orgId?:string;orgName?:string;keyMode?:string;verifiedAt?:string}>({});
-  constructor() { void this.refresh().then(ok=>{if(ok && this.status().configured)void this.verifyConnection();}); window.addEventListener('hashchange',this.onHash); }
+  constructor() { void this.refresh().then(ok=>{if(ok && this.status().configured)void this.verifyConnection(true);}); window.addEventListener('hashchange',this.onHash); }
   ngOnDestroy(){clearInterval(this.poll);window.removeEventListener('hashchange',this.onHash);}
   ngAfterViewChecked(){const m=this.modal();if(m!==this.lastModal){if(m){this.previousFocus=document.activeElement as HTMLElement;setTimeout(()=>document.querySelector<HTMLElement>('[role="dialog"] input, [role="dialog"] button')?.focus());}else this.previousFocus?.focus();this.lastModal=m;}}
   trapFocus(event:KeyboardEvent){if(event.key!=='Tab')return;const nodes=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled),[role="dialog"] input,[role="dialog"] textarea,[role="dialog"] select,[role="dialog"] a[href]'));if(!nodes.length)return;const first=nodes[0],last=nodes[nodes.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}
@@ -117,6 +118,8 @@ export class App implements OnDestroy, AfterViewChecked {
   async buyerComplete(m:any){if(!this.question.author.trim()){this.error.set('Enter your name in the question form before updating a shared milestone.');return;}await this.mutate(`public/${this.buyerToken()}/milestones/${m.id}`,'PATCH',{done:!m.done,author:this.question.author});}
   async downloadBackup(){try{const data=await this.api('export');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='graph8-workspace-backup.json';a.click();URL.revokeObjectURL(url);}catch(e){this.error.set(this.message(e));}}
   async reconcile(){if(await this.mutate(`goals/${this.selected()}/reconcile`,'POST',this.form,'Campaign reconciled'))this.modal.set('');}
-  async verifyConnection(){this.busy.set(true);this.error.set('');try{this.connection.set(await this.api('connection'));this.connectionVerified.set(true);this.notice.set('Graph8 organization verified.');}catch(e){this.connectionVerified.set(false);this.error.set(this.message(e));}finally{this.busy.set(false);}}
+  async verifyConnection(silent=false){this.busy.set(true);this.error.set('');try{this.connection.set(await this.api('connection'));this.connectionVerified.set(true);if(!silent)this.notice.set(`Graph8 organisation verified: ${this.connection().orgName||'connected'}.`);}catch(e){this.connectionVerified.set(false);this.error.set(this.message(e));}finally{this.busy.set(false);}}
   eventEndpoint(e:Experiment){return `${location.origin}/api/events/experiments/${e.id}`;}
+  readonly theme = inject(ThemeService);
+  private readonly toastBridge = toastSignals(this.notice, this.error);
 }
