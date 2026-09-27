@@ -45,7 +45,7 @@ export async function wonDeal({name,amount,currency,contactId,companyId,descript
  const stage=pipe?.stages?.find(s=>s.stage_type==='won');
  const team=unwrap(await call('list_team_members_team_members_get',{query:{limit:20}},{trace}));const member=(team?.items||team?.team_members||[]).find(m=>m.status==='active');
  if(!member)throw new Error('No active Graph8 team member to own the deal.');
- const body={name:name.slice(0,250),amount,currency,contact_ids:contactId?[Number(contactId)]:[],company_id:companyId?Number(companyId):null,owner_id:member.id,pipeline_id:pipe?.id||null,stage_id:stage?.id||null,close_date:new Date().toISOString().slice(0,10),description:description?.slice(0,4000),allow_duplicate:false};
+ const body={name:name.slice(0,250),amount,currency,contact_ids:contactId?[Number(contactId)]:[],company_id:companyId?Number(companyId):null,owner_id:member.id,pipeline_id:pipe?.id||null,stage_id:stage?.id||null,close_date:new Date().toISOString().slice(0,10),description:description?.slice(0,4000),allow_duplicate:true};
  let d;try{d=unwrap(await call('create_deal_deals_post',{body},{trace,idempotencyKey:key}));}
  catch(e){if(!member.propelauth_user_id)throw e;d=unwrap(await call('create_deal_deals_post',{body:{...body,owner_id:member.propelauth_user_id}},{trace,idempotencyKey:key&&key+'-p'}));}
  return {dealId:d?.id??d?.deal_id??d?.deal?.id,pipeline:pipe?.name,stage:stage?.name};

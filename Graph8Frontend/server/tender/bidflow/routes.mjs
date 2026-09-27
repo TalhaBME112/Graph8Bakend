@@ -65,6 +65,7 @@ export function createBidFlow(db){
    const existing=profileOf(org.id,user.id);if(existing)return send(db.update(org.id,'market-profile',user.id,user.id,'profile:graph8-linked',r=>{r.graph8Company=snap;if(typeof b.autoPursue==='boolean')r.autoPursue=b.autoPursue;}));
    return send(db.create(org.id,'market-profile',{id:user.id,company:snap.name,services:snap.description,categories:[],countries:snap.country?[snap.country]:[],autoDraft:false,graph8Company:snap},user.id));}
   if(kind==='profile'&&id==='autopilot'&&method==='POST'){deny(bidderRole(user),'Only bidders have supplier profiles.');const existing=profileOf(org.id,user.id);deny(existing,'Save your supplier profile first.',400);return send(db.update(org.id,'market-profile',user.id,user.id,'profile:autopilot',r=>{r.autoPursue=b.enabled===true;}));}
+  if(kind==='award-sync'&&method==='POST'){const t=db.get(org.id,'market-tender',String(b.tenderId));deny(t.issuerId===user.id,'Only the buyer can retry the Graph8 deal.',404);deny(t.status==='awarded'&&t.award?.bidId,'This tender has not been awarded.',409);deny(t.award?.graph8?.status!=='completed','The Graph8 deal is already recorded.',409);await onAward(org.id,t,db.get(org.id,'market-bid',t.award.bidId),user);return send(db.get(org.id,'market-tender',t.id).award.graph8);}
   if(kind==='invites'&&method==='GET')return send(db.list(org.id,'market-invite').filter(i=>i.bidderId===user.id));
   throw new AppError('BidFlow route not found.',404);
  }
